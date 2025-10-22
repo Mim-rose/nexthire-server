@@ -8,19 +8,17 @@ require('dotenv').config();
 const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-
-
 // 🔒 Middleware
-app.use(cookieParser()); // For parsing cookies
+app.use(cookieParser());
 app.use(cors({
   origin: ['http://localhost:5173'],
-  credentials: true, // Allow cookies to be sent
+  credentials: true,
 }));
-app.use(express.json()); // For JSON-only requests
+app.use(express.json());
 
-// 🗂️ File upload middleware (for multipart/form-data)
+// 🗂️ File upload middleware
 const upload = multer({
-  limits: { fileSize: 5 * 1024 * 1024 } // Limit files to 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
 // 🔗 MongoDB URI
@@ -39,199 +37,12 @@ const client = new MongoClient(uri, {
 let jobsCollection;
 let jobApplicationCollection;
 
-
-
-// 🚋 API route outside run(): Fix for Cannot GET
-app.get('/api/categories', async (req, res) => {
-  try {
-    if (!jobsCollection) {
-      console.error("🚨 jobsCollection is undefined");
-      return res.status(500).json({ message: "jobsCollection not available" });
-    }
-
-    console.log("🔍 Attempting to fetch distinct categories…");
-    const categories = await jobsCollection.distinct('category');
-    console.log("✅ categories response:", categories);
-
-    if (!Array.isArray(categories)) {
-      console.error("🚨 categories is not an array");
-      return res.status(500).json({ message: "Invalid categories format" });
-    }
-
-    res.send(categories);
-  } catch (err) {
-    console.error("❌ Failed to fetch categories:", err);
-    res.status(500).json({ message: 'Could not fetch categories' });
-  }
+// 🌐 Root Route (this can stay outside)
+app.get('/', (req, res) => {
+  res.send('🚀 Welcome to the NextHire API');
 });
 
-
-// 🚋 API route for companies
-
-app.get("/api/companies", async (req, res) => {
-  try {
-    const jobs = await jobsCollection.find({ status: "active" }).toArray();
-
-    const companyMap = new Map();
-
-    jobs.forEach((job) => {
-      const name = job.company;
-      const logo = job.company_logo;
-      const location = job.location;
-
-      if (!name || !logo) return;
-
-      if (!companyMap.has(name)) {
-        companyMap.set(name, {
-          name,
-          logo,
-          location,
-          jobCount: 1,
-          rating: parseFloat((Math.random() * 1.5 + 3.5).toFixed(1)),
-          reviews: Math.floor(Math.random() * 200) + 20,
-        });
-      } else {
-        const existing = companyMap.get(name);
-        existing.jobCount += 1;
-      }
-    });
-
-    const companies = Array.from(companyMap.values());
-    res.json(companies);
-  } catch (error) {
-    console.error("Error fetching companies:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-// For all the company list
-app.get("/api/companies/all", async (req, res) => {
-  try {
-    const jobs = await jobsCollection.find({ status: "active" }).toArray();
-
-    const companyMap = new Map();
-
-    jobs.forEach((job) => {
-      const name = job.company;
-      const logo = job.company_logo;
-      const location = job.location;
-
-      if (!name || !logo) return;
-
-      if (!companyMap.has(name)) {
-        companyMap.set(name, {
-          name,
-          logo,
-          location,
-          jobCount: 1,
-          rating: parseFloat((Math.random() * 1.5 + 3.5).toFixed(1)),
-          reviews: Math.floor(Math.random() * 200) + 20,
-        });
-      } else {
-        const existing = companyMap.get(name);
-        existing.jobCount += 1;
-      }
-    });
-
-    const allCompanies = Array.from(companyMap.values());
-    res.json(allCompanies);
-  } catch (err) {
-    console.error("❌ Failed to fetch all companies:", err);
-    res.status(500).json({ error: "Failed to fetch companies" });
-  }
-});
-
-// to get all the jobs of a company
-app.get("/api/companies/:companyName", async (req, res) => {
-  try {
-    const companyName = req.params.companyName;
-
-    const jobs = await jobsCollection
-      .find({ company: companyName, status: "active" })
-      .toArray();
-
-    if (jobs.length === 0) {
-      return res.status(404).json({ error: "No jobs found for this company" });
-    }
-
-    res.json({ jobs });
-  } catch (err) {
-    console.error("❌ Error fetching jobs for company:", err);
-    res.status(500).json({ error: "Failed to fetch jobs for company" });
-  }
-});
-
-// Auth related APIs
-
-app.post('/jwt', async (req, res) => {
-    const user = req.body;
-    const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-    res.cookie('token', token, {
-        httpOnly: true,
-        // Set secure: true in production when using HTTPS
-        secure: process.env.NODE_ENV === 'production', 
-        sameSite: 'strict' 
-    })
-    .json({ success: true, token: token }); // Send a single JSON response
-});
-
-
-//  implementing the search functionality
-app.get("/api/search", async (req, res) => {
-  const query = req.query.q;
-  if (!query) return res.status(400).json({ error: "Missing search query" });
-
-  const regex = new RegExp(query, "i"); // Case-insensitive partial match
-
-  try {
-    const jobs = await jobsCollection.find({
-      $or: [
-        { title: regex },
-        { company: regex },
-        { category: regex },
-        { location: regex },
-        { description: regex }
-      ]
-    }).toArray();
-
-    res.json(jobs);
-  } catch (err) {
-    console.error("❌ Search error:", err);
-    res.status(500).json({ error: "Search failed" });
-  }
-});
-// search by location
-app.get('/api/locations', async (req, res) => {
-  try {
-    if (!jobsCollection) return res.status(500).json({ message: "jobsCollection not ready" });
-    const locations = await jobsCollection.distinct('location');
-    res.json(locations);
-  } catch (err) {
-    console.error("Error fetching locations:", err);
-    res.status(500).json({ message: "Could not fetch locations" });
-  }
-});
-
-
-// Subscribe to job updates
-app.post("/api/subscribe", async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: "Email is required" });
-
-  await subscriptionsCollection.insertOne({ email, subscribedAt: new Date() });
-  res.json({ message: "Subscribed successfully" });
-});
-
-// Add this to verify cookies work
-app.get('/check-auth', (req, res) => {
-  console.log('Cookies:', req.cookies); // Should show your token
-  res.json({ authenticated: !!req.cookies.token });
-});
-
-
-
-
-// 🚀 Connect and define routes
+// 🚀 Connect and define ALL routes inside
 async function run() {
   try {
     await client.connect();
@@ -241,37 +52,220 @@ async function run() {
     jobsCollection = client.db('NextHire').collection('Jobs');
     jobApplicationCollection = client.db('NextHire').collection('job_applications');
 
-    // 📄 Get all jobs with sorting, limiting, and logging
-    // Backend: jobs.js (remove .limit(15))
-    // Homepage endpoint (limited)
-app.get('/jobs/featured', async (req, res) => {
-  try {
-    const jobs = await jobsCollection.find()
-      .sort({ isFeatured: -1, createdAt: -1 }) // Show featured first
-      .limit(15) // Strict limit for homepage
-      .toArray();
-    res.send(jobs);
-  } catch (err) {
-    res.status(500).json({ message: "Could not fetch jobs" });
-  }
-});
+    // ✅ NOW define all routes that need database access
 
-// Full jobs endpoint (unlimited, for jobs page)
-app.get('/jobs/all', async (req, res) => {
-  try {
-    const { page = 1, limit = 20 } = req.query;
-    const jobs = await jobsCollection.find()
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
-      .toArray();
-    res.send(jobs);
-  } catch (err) {
-    res.status(500).json({ message: "Could not fetch jobs" });
-  }
-});
-    
-    // 📄 Get single job by ID
+    // 🚋 Categories
+    app.get('/api/categories', async (req, res) => {
+      try {
+        if (!jobsCollection) {
+          console.error("🚨 jobsCollection is undefined");
+          return res.status(500).json({ message: "jobsCollection not available" });
+        }
+
+        console.log("🔍 Attempting to fetch distinct categories…");
+        const categories = await jobsCollection.distinct('category');
+        console.log("✅ categories response:", categories);
+
+        if (!Array.isArray(categories)) {
+          console.error("🚨 categories is not an array");
+          return res.status(500).json({ message: "Invalid categories format" });
+        }
+
+        res.send(categories);
+      } catch (err) {
+        console.error("❌ Failed to fetch categories:", err);
+        res.status(500).json({ message: 'Could not fetch categories' });
+      }
+    });
+
+    // 🚋 Companies
+    app.get("/api/companies", async (req, res) => {
+      try {
+        const jobs = await jobsCollection.find({ status: "active" }).toArray();
+
+        const companyMap = new Map();
+
+        jobs.forEach((job) => {
+          const name = job.company;
+          const logo = job.company_logo;
+          const location = job.location;
+
+          if (!name || !logo) return;
+
+          if (!companyMap.has(name)) {
+            companyMap.set(name, {
+              name,
+              logo,
+              location,
+              jobCount: 1,
+              rating: parseFloat((Math.random() * 1.5 + 3.5).toFixed(1)),
+              reviews: Math.floor(Math.random() * 200) + 20,
+            });
+          } else {
+            const existing = companyMap.get(name);
+            existing.jobCount += 1;
+          }
+        });
+
+        const companies = Array.from(companyMap.values());
+        res.json(companies);
+      } catch (error) {
+        console.error("Error fetching companies:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    // All companies
+    app.get("/api/companies/all", async (req, res) => {
+      try {
+        const jobs = await jobsCollection.find({ status: "active" }).toArray();
+
+        const companyMap = new Map();
+
+        jobs.forEach((job) => {
+          const name = job.company;
+          const logo = job.company_logo;
+          const location = job.location;
+
+          if (!name || !logo) return;
+
+          if (!companyMap.has(name)) {
+            companyMap.set(name, {
+              name,
+              logo,
+              location,
+              jobCount: 1,
+              rating: parseFloat((Math.random() * 1.5 + 3.5).toFixed(1)),
+              reviews: Math.floor(Math.random() * 200) + 20,
+            });
+          } else {
+            const existing = companyMap.get(name);
+            existing.jobCount += 1;
+          }
+        });
+
+        const allCompanies = Array.from(companyMap.values());
+        res.json(allCompanies);
+      } catch (err) {
+        console.error("❌ Failed to fetch all companies:", err);
+        res.status(500).json({ error: "Failed to fetch companies" });
+      }
+    });
+
+    // Company jobs
+    app.get("/api/companies/:companyName", async (req, res) => {
+      try {
+        const companyName = req.params.companyName;
+
+        const jobs = await jobsCollection
+          .find({ company: companyName, status: "active" })
+          .toArray();
+
+        if (jobs.length === 0) {
+          return res.status(404).json({ error: "No jobs found for this company" });
+        }
+
+        res.json({ jobs });
+      } catch (err) {
+        console.error("❌ Error fetching jobs for company:", err);
+        res.status(500).json({ error: "Failed to fetch jobs for company" });
+      }
+    });
+
+    // JWT
+    app.post('/jwt', async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict'
+      })
+        .json({ success: true, token: token });
+    });
+
+    // Search
+    app.get("/api/search", async (req, res) => {
+      const query = req.query.q;
+      if (!query) return res.status(400).json({ error: "Missing search query" });
+
+      const regex = new RegExp(query, "i");
+
+      try {
+        const jobs = await jobsCollection.find({
+          $or: [
+            { title: regex },
+            { company: regex },
+            { category: regex },
+            { location: regex },
+            { description: regex }
+          ]
+        }).toArray();
+
+        res.json(jobs);
+      } catch (err) {
+        console.error("❌ Search error:", err);
+        res.status(500).json({ error: "Search failed" });
+      }
+    });
+
+    // Locations
+    app.get('/api/locations', async (req, res) => {
+      try {
+        if (!jobsCollection) return res.status(500).json({ message: "jobsCollection not ready" });
+        const locations = await jobsCollection.distinct('location');
+        res.json(locations);
+      } catch (err) {
+        console.error("Error fetching locations:", err);
+        res.status(500).json({ message: "Could not fetch locations" });
+      }
+    });
+
+    // Subscribe
+    app.post("/api/subscribe", async (req, res) => {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      await subscriptionsCollection.insertOne({ email, subscribedAt: new Date() });
+      res.json({ message: "Subscribed successfully" });
+    });
+
+    // Check auth
+    app.get('/check-auth', (req, res) => {
+      console.log('Cookies:', req.cookies);
+      res.json({ authenticated: !!req.cookies.token });
+    });
+
+    // Featured jobs
+    app.get('/jobs/featured', async (req, res) => {
+      try {
+        const jobs = await jobsCollection.find()
+          .sort({ isFeatured: -1, createdAt: -1 })
+          .limit(15)
+          .toArray();
+        res.send(jobs);
+      } catch (err) {
+        res.status(500).json({ message: "Could not fetch jobs" });
+      }
+    });
+
+    // All jobs
+    app.get('/jobs/all', async (req, res) => {
+      try {
+        const { page = 1, limit = 20 } = req.query;
+        const jobs = await jobsCollection.find()
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(Number(limit))
+          .toArray();
+        res.send(jobs);
+      } catch (err) {
+        res.status(500).json({ message: "Could not fetch jobs" });
+      }
+    });
+
+    // Single job
     app.get('/jobs/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -279,26 +273,27 @@ app.get('/jobs/all', async (req, res) => {
       res.send(result);
     });
 
+    // Post job
     app.post('/jobs', async (req, res) => {
       const newjob = req.body;
       newjob.createdAt = new Date();
       const result = await jobsCollection.insertOne(newjob);
       res.send(result);
     });
-    // 📄 Get jobs posted by a specific user (by email)
-app.get('/jobs', async (req, res) => {
-  const email = req.query.email;
-  try {
-    const jobs = await jobsCollection.find({ postedBy: email }).toArray();
-    res.json(jobs);
-  } catch (err) {
-    console.error("Error fetching user's posted jobs:", err);
-    res.status(500).json({ message: "Failed to fetch jobs" });
-  }
-});
 
+    // User's posted jobs
+    app.get('/jobs', async (req, res) => {
+      const email = req.query.email;
+      try {
+        const jobs = await jobsCollection.find({ postedBy: email }).toArray();
+        res.json(jobs);
+      } catch (err) {
+        console.error("Error fetching user's posted jobs:", err);
+        res.status(500).json({ message: "Failed to fetch jobs" });
+      }
+    });
 
-    // 📄 Get job applications by user email
+    // Job applications
     app.get('/job-applications', async (req, res) => {
       const email = req.query.email;
       const query = { applicant_email: email };
@@ -307,7 +302,6 @@ app.get('/jobs', async (req, res) => {
       try {
         const result = await jobApplicationCollection.find(query).toArray();
 
-        // Fetch all related job details concurrently
         const enrichedApplications = await Promise.all(result.map(async (app) => {
           const job = await jobsCollection.findOne({ _id: new ObjectId(app.job_id) });
 
@@ -332,70 +326,62 @@ app.get('/jobs', async (req, res) => {
       }
     });
 
-    // 📤 Handle job application with file uploads
-    // 📤 Handle job application with file uploads
-app.post(
-  '/job-applications',
-  upload.fields([
-    { name: 'resume', maxCount: 1 },
-    { name: 'coverLetter', maxCount: 1 }
-  ]),
-  async (req, res) => {
-    try {
-      const application = {
-        job_id: req.body.job_id,
-        applicant_email: req.body.applicant_email,
-        applicant_name: req.body.applicant_name,
-        applicant_phone: req.body.applicant_phone,
-        applicant_linkedin: req.body.applicant_linkedin,
-        applicant_notes: req.body.applicant_notes,
-        resume: req.files?.resume?.[0]?.originalname || null,
-        coverLetter: req.files?.coverLetter?.[0]?.originalname || null
-      };
+    // Submit application
+    app.post(
+      '/job-applications',
+      upload.fields([
+        { name: 'resume', maxCount: 1 },
+        { name: 'coverLetter', maxCount: 1 }
+      ]),
+      async (req, res) => {
+        try {
+          const application = {
+            job_id: req.body.job_id,
+            applicant_email: req.body.applicant_email,
+            applicant_name: req.body.applicant_name,
+            applicant_phone: req.body.applicant_phone,
+            applicant_linkedin: req.body.applicant_linkedin,
+            applicant_notes: req.body.applicant_notes,
+            resume: req.files?.resume?.[0]?.originalname || null,
+            coverLetter: req.files?.coverLetter?.[0]?.originalname || null
+          };
 
-      const result = await jobApplicationCollection.insertOne(application);
+          const result = await jobApplicationCollection.insertOne(application);
 
-      // Fetch job details using job_id
-      const id = application.job_id;
-      const query = { _id: new ObjectId(id) };
-      const job = await jobsCollection.findOne(query);
-      console.log("Job details for application:", job);
-      let newCount ;
+          const id = application.job_id;
+          const query = { _id: new ObjectId(id) };
+          const job = await jobsCollection.findOne(query);
+          console.log("Job details for application:", job);
+          let newCount;
 
+          if (job.applicationCount) {
+            newCount = job.applicationCount + 1;
+          } else {
+            newCount = 1;
+          }
 
-      if(job.applicationCount) {
+          const filter = { _id: new ObjectId(id) };
+          const updatedDoc = {
+            $set: {
+              applicationCount: newCount
+            }
+          }
 
-        newCount = job.applicationCount + 1;
+          const updateResult = await jobsCollection.updateOne(filter, updatedDoc);
 
-      }
-      else {
-        newCount = 1;
-      }
+          res.status(200).json({
+            insertedId: result.insertedId,
+            jobDetails: job
+          });
 
-      const filter = {_id: new ObjectId(id)};
-      const updatedDoc = {
-        $set: {
-          applicationCount: newCount || count
+        } catch (err) {
+          console.error('❌ Submission error:', err);
+          res.status(500).json({ message: 'Failed to process application' });
         }
       }
-    
-       const updateResult = await jobsCollection.updateOne(filter, updatedDoc);
+    );
 
-      // ✅ Send only one response with all needed data
-      res.status(200).json({ 
-        insertedId: result.insertedId,
-        jobDetails: job 
-      });
-
-    } catch (err) {
-      console.error('❌ Submission error:', err);
-      res.status(500).json({ message: 'Failed to process application' });
-    }
-  }
-);
-
-    
-    // 🗑️ Delete job application by ID
+    // Delete application
     app.delete('/job-applications/:id', async (req, res) => {
       try {
         const result = await jobApplicationCollection.deleteOne({
@@ -419,7 +405,7 @@ app.post(
       }
     });
 
-    // 📁 Get jobs by category
+    // Category jobs
     app.get('/jobs/category/:category', async (req, res) => {
       try {
         const category = req.params.category;
@@ -432,19 +418,17 @@ app.post(
       }
     });
 
+    // 🚦 Start Server ONLY AFTER all routes are defined
+    app.listen(port, () => {
+      console.log(`🟢 Server running on port ${port}`);
+      console.log(`📊 Database: Connected`);
+      console.log(`✅ All routes registered`);
+    });
+
   } catch (err) {
     console.error("❌ DB Connection Error:", err);
+    process.exit(1);
   }
 }
 
-run(); // 🏃 Connects and runs the server logic
-
-// 🌐 Root Route
-app.get('/', (req, res) => {
-  res.send('🚀 Welcome to the NextHire API');
-});
-
-// 🚦 Start Server
-app.listen(port, () => {
-  console.log(`🟢 Server running on port ${port}`);
-});
+run();
