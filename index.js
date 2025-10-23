@@ -12,6 +12,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 app.use(cookieParser());
 app.use(cors({
   origin: ['http://localhost:5173','https://nexthire-server.onrender.com'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 }));
 app.use(express.json());
