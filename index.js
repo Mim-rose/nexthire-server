@@ -174,9 +174,11 @@ async function run() {
       try {
         const companyName = req.params.companyName;
 
-        const jobs = await jobsCollection
-          .find({ company: companyName, status: "active" })
-          .toArray();
+        const jobs = await jobsCollection.find({
+  company: { $regex: `^${companyName}$`, $options: 'i' },
+  status: "active"
+}).toArray();
+
 
         if (jobs.length === 0) {
           return res.status(404).json({ error: "No jobs found for this company" });
